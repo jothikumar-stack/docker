@@ -28,7 +28,7 @@ jobs:
         run: npm run test -- --coverage
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: startsWith(github.event.head_commit.message, 'Merge pull request')
     needs: test
     runs-on: ubuntu-latest
     steps:
