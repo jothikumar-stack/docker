@@ -1,22 +1,79 @@
 name: CI/CD pipeline
+
 on:
+  push:
+    branches:
+      - master
   pull_request:
     branches:
       - master
+
 jobs:
   test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-      - uses: actions/checkout@v3
-
-      - name: Install Node.js
-      - uses: actions/setup-node@v4
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
 
       - name: Install dependencies
-      - run: npm install
+        run: npm install
 
       - name: Run tests
-      - run: npm run test
+        run: npm run test -- --coverage
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm run test -- --coverage
+
+      - name: Setup AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_SECRET_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: eu-north-1
+
+      - name: Zip source code (including Dockerfile if needed)
+        run: |
+          zip -r deploy.zip . -x ".git/*" "node_modules/*" ".github/*"
+
+      - name: Upload to S3
+        run: |
+          aws s3 cp deploy.zip s3://elasticbeanstalk-eu-north-1-101292721600/deploy-${{ github.run_id }}.zip
+
+      - name: Create new EB version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name react-frontend \
+            --version-label v-${{ github.run_id }} \
+            --source-bundle S3Bucket=elasticbeanstalk-eu-north-1-101292721600,S3Key=deploy-${{ github.run_id }}.zip
+
+      - name: Deploy to Elastic Beanstalk
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name React-frontend-env \
+            --version-label v-${{ github.run_id }}
+
+
+      
+      
